@@ -18,8 +18,8 @@ int W = 1600, H = 900, F = 100;
 unsigned int SCENESPEED = 5, SCENEID = 0, BALLACC = 20;
 double GX = 9000, GY = -200, GZ = 16000, BALLSIZE = 1;
 
-double obvRadius = 8, obvFactor = 1.5,
-    obvRotateX = 0, obvRotateY = 0, actStep = 10,
+double obvRadius = 8, obvFactor = 2,
+    obvRotateX = 0, obvRotateY = 0, actStep = 7,
     turnLeftStep = 5, turnRightStep = 5,
     zoomStep = 0.05, obvRadiusMax = 10, obvRadiusMin = 1.8,
     mapViewFac = 0.7, mapViewHeight = 5000, wallHeight = 2000;
@@ -240,11 +240,6 @@ void keyboardListener(unsigned char cmd, int x, int y)
                     wallEx.push_back(v);
                     wall.push_back(tmpWall);
                     tmpWall.clear();
-
-                    // double delX = 0, delZ = 0;
-                    // double r = sqrt((q.x-p.x)*(q.x-p.x)+(q.z-p.z)*(q.z-p.z));
-                    // double s = (q.x-p.x)/r, c = (q.z-p.z)/r;
-                    // move(-1.2*s*F, -1.2*c*F);
                 }
                 else
                 {
@@ -379,21 +374,33 @@ void moveAlongWall(double delX, double delZ, double u, double v)
 }
 bool checkMovable(double delX, double delZ)
 {
+    static const int EPS = 3;
+    static const double EPS2 = 5;
     for (int i=0; i<wallEx.size(); i++)
         for (int j=0; j<wallEx[i].size(); j++)
             if (sqrt((wallEx[i][j].x+delX)*(wallEx[i][j].x+delX)
-                +(wallEx[i][j].z+delX)*(wallEx[i][j].z+delZ)) < F)
+                +(wallEx[i][j].z+delX)*(wallEx[i][j].z+delZ)) <= F+EPS2)
             {
-                if (j==0)
-                    moveAlongWall(delX, delZ, -wallEx[i][j].z, wallEx[i][j].x);
-                else moveAlongWall(delX, delZ, wall[i][2].x-wall[i][1].x, wall[i][2].z-wall[i][1].z);
+                double a1 = wallEx[i].front().z, b1 = wallEx[i].front().x,
+                    a2 = wallEx[i].back().z, b2 = wallEx[i].back().x,
+                    c = wall[i][2].x-wall[i][1].x, d = wall[i][2].z-wall[i][1].z;
+                if (j>EPS && j<wallEx[i].size()-1-EPS) moveAlongWall(delX, delZ, c, d);
+                else if (j <= EPS)
+                {
+                    if (a1*c+b1*d < 0) moveAlongWall(delX, delZ, -a1, b1);
+                    else moveAlongWall(delX, delZ, c, d);
+                }
+                else if (j >= wallEx[i].size()-1-EPS)
+                {
+                    if (a2*c+b2*d >= 0) moveAlongWall(delX, delZ, a2, -b2);
+                    else moveAlongWall(delX, delZ, c, d);
+                }
                 return false;
             }
     return true;
 }
 void sceneMoveLoop(int id)
 {
-    printf("%.2f %.2f\n", ground[0].x, ground[0].y);
     double delX = 0, delZ = 0;
     if (moveLeft) 
     {
