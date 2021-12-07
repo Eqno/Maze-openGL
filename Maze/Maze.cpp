@@ -1,34 +1,40 @@
 #include "./texture.cpp"
-#include "./scene.cpp"
+#include "./ball.cpp"
+#include <algorithm>
 #include <cmath>
 #include <gl/freeglut_std.h>
 #include <gl/gl.h>
 #include <gl/glu.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <synchapi.h>
 #include <vector>
 #include <wingdi.h>
 using namespace std;
 
-// wasd 移动，qe 旋转，m 打开地图，r 编辑地图，t 增加墙，y 删除墙。
+// wasd 移动，qe 旋转，m 打开地图，z 编辑地图，x 增加墙，f 放置墙，
+// c 删除墙，v 切换视角， r 显示朝向, ↑ 推进镜头，↓ 拉远镜头。
 
-int groundTexId = 0, ball = 0, wallTexId = 0;
+int groundTexId = 0, ball = 0, wallTexId = 0, 
+    skyTopTexId = 0, skyBottomTexId = 0,
+    skyFrontTexId = 0, skyBackTexId = 0,
+    skyLeftTexId = 0, skyRightTexId = 0;
 int W = 1600, H = 900, F = 100;
 unsigned int SCENESPEED = 5, SCENEID = 0, BALLACC = 20;
-double GX = 9000, GY = -200, GZ = 16000, BALLSIZE = 1;
+double GX = 9000, GY = -200, GZ = 16000, BALLSIZE = 0.5;
 
-double obvRadius = 8, obvFactor = 2,
-    obvRotateX = 0, obvRotateY = 0, actStep = 7,
-    turnLeftStep = 5, turnRightStep = 5,
-    zoomStep = 0.05, obvRadiusMax = 10, obvRadiusMin = 1.8,
-    mapViewFac = 0.7, mapViewHeight = 5000, wallHeight = 2000;
+double wallTexFactor = 5, groundTexFactor = 50,
+    obvRotateX = 0, obvRotateY = 0, actStep = 5,
+    turnLeftStep = 1, turnRightStep = 1,
+    obvMoveFactorX = 1.2, obvMoveFactorY = 0.5, obvMoveRadius = 3,
+    obvLookRadius = 3, zoomStep = 0.05, obvRadiusMax = 8, obvRadiusMin = 1.3,
+    mapViewFac = 0.7, mapViewHeight = 5000, wallHeight = 500,
+    skyBottom = -500, skyDistance = 500, siteDistance = 500;
     
 bool openMap = false, firstPerson = false,
     mouseLeftDown = false, mouseRightDown = false, mouseControlMove = false,
     turnLeft = false, turnRight = false, zoomIn = false, zoomOut = false,
     moveLeft = false, moveRight = false, moveForward = false, moveBack = false,
-    editMap = false, drawWall = false;
+    editMap = false, drawWall = false, delWall = false, showDre = false;
 
 double actRotateX = obvRotateX,
     lastRotateX = obvRotateX,
@@ -36,8 +42,10 @@ double actRotateX = obvRotateX,
     actMoveStartX = 0, actMoveStartZ = 0,
     actMoveEndX = 0, actMoveEndZ = 0;
 
-vector <Point> actor, ground, tmpWall;
+vector <Point> actor, ground, tmpWall, pointer, sky;
 vector <vector <Point>> wall, wallEx;
+
+double actLastAngX = 0;
 
 void updateObverse()
 {   
@@ -49,18 +57,20 @@ void updateObverse()
     else
     {
         if (firstPerson) glTranslated(0, 0, 0);
-        else glTranslated(0, 0, -obvRadius);
+        else glTranslated(0, 0, -obvLookRadius);
         if (obvRotateX > 180) obvRotateX = -180;
         if (obvRotateX < -180) obvRotateX = 180;
         if (obvRotateY > 180) obvRotateY = -180;
         if (obvRotateY < -180) obvRotateY = 180;
         if (actRotateX > 180) actRotateX = -180;
         if (actRotateX < -180) actRotateX = 180;
-        glRotatef(obvRotateY, 1, 0, 0);
-        glRotatef(obvRotateX, 0, 1, 0);
+        glRotated(obvRotateY, 1, 0, 0);
+        glRotated(obvRotateX, 0, 1, 0);
         if (mouseRightDown)
         {
-            rotateDY(actor, -obvRotateX);
+            rotateDY(actor, -obvRotateX+actLastAngX);
+            rotateDY(pointer, -obvRotateX+actLastAngX);
+            actLastAngX = obvRotateX;
             actRotateX = obvRotateX;
         }
     }
@@ -74,13 +84,66 @@ void getGround()
 }
 void addGround()
 {
-    if (editMap) glColor3dv(RED);   
+    glBindTexture(GL_TEXTURE_2D, 0);
+    if (drawWall) glColor3dv(DARKBLUE);
+    else if (delWall) glColor3dv(DARKRED);
+    else if (editMap) glColor3dv(DARKGREEN);
     else glBindTexture(GL_TEXTURE_2D, groundTexId);
     glBegin(GL_QUADS);
     glTexCoord2d(0, 0); glVertex3d(ground[0].x/F, ground[0].y/F, ground[0].z/F);
-    glTexCoord2d(0, 20); glVertex3d(ground[1].x/F, ground[1].y/F, ground[1].z/F);
-    glTexCoord2d(20, 20); glVertex3d(ground[2].x/F, ground[2].y/F, ground[2].z/F);
-    glTexCoord2d(20, 0); glVertex3d(ground[3].x/F, ground[3].y/F, ground[3].z/F);
+    glTexCoord2d(0, groundTexFactor); glVertex3d(ground[1].x/F, ground[1].y/F, ground[1].z/F);
+    glTexCoord2d(groundTexFactor, groundTexFactor); glVertex3d(ground[2].x/F, ground[2].y/F, ground[2].z/F);
+    glTexCoord2d(groundTexFactor, 0); glVertex3d(ground[3].x/F, ground[3].y/F, ground[3].z/F);
+    glEnd();
+}
+void addSky()
+{
+    glBindTexture(GL_TEXTURE_2D, skyTopTexId);
+    glBegin(GL_QUADS);
+    glTexCoord2d(0, 0); glVertex3d(sky[0].x/F, sky[0].y/F, sky[0].z/F);
+    glTexCoord2d(0, 1); glVertex3d(sky[1].x/F, sky[1].y/F, sky[1].z/F);
+    glTexCoord2d(1, 1); glVertex3d(sky[2].x/F, sky[2].y/F, sky[2].z/F);
+    glTexCoord2d(1, 0); glVertex3d(sky[3].x/F, sky[3].y/F, sky[3].z/F);
+    glEnd();
+
+    glBindTexture(GL_TEXTURE_2D, skyLeftTexId);
+    glBegin(GL_QUADS);
+    glTexCoord2d(1, 0); glVertex3d(sky[4].x/F, sky[4].y/F, sky[4].z/F);
+    glTexCoord2d(0, 0); glVertex3d(sky[5].x/F, sky[5].y/F, sky[5].z/F);
+    glTexCoord2d(0, 1); glVertex3d(sky[6].x/F, sky[6].y/F, sky[6].z/F);
+    glTexCoord2d(1, 1); glVertex3d(sky[7].x/F, sky[7].y/F, sky[7].z/F);
+    glEnd();
+
+    glBindTexture(GL_TEXTURE_2D, skyRightTexId);
+    glBegin(GL_QUADS);
+    glTexCoord2d(1, 0); glVertex3d(sky[8].x/F, sky[8].y/F, sky[8].z/F);
+    glTexCoord2d(0, 0); glVertex3d(sky[9].x/F, sky[9].y/F, sky[9].z/F);
+    glTexCoord2d(0, 1); glVertex3d(sky[10].x/F, sky[10].y/F, sky[10].z/F);
+    glTexCoord2d(1, 1); glVertex3d(sky[11].x/F, sky[11].y/F, sky[11].z/F);
+    glEnd();
+
+    glBindTexture(GL_TEXTURE_2D, skyBackTexId);
+    glBegin(GL_QUADS);
+    glTexCoord2d(0, 0); glVertex3d(sky[12].x/F, sky[12].y/F, sky[12].z/F);
+    glTexCoord2d(0, 1); glVertex3d(sky[13].x/F, sky[13].y/F, sky[13].z/F);
+    glTexCoord2d(1, 1); glVertex3d(sky[14].x/F, sky[14].y/F, sky[14].z/F);
+    glTexCoord2d(1, 0); glVertex3d(sky[15].x/F, sky[15].y/F, sky[15].z/F);
+    glEnd();
+
+    glBindTexture(GL_TEXTURE_2D, skyFrontTexId);
+    glBegin(GL_QUADS);
+    glTexCoord2d(0, 0); glVertex3d(sky[16].x/F, sky[16].y/F, sky[16].z/F);
+    glTexCoord2d(0, 1); glVertex3d(sky[17].x/F, sky[17].y/F, sky[17].z/F);
+    glTexCoord2d(1, 1); glVertex3d(sky[18].x/F, sky[18].y/F, sky[18].z/F);
+    glTexCoord2d(1, 0); glVertex3d(sky[19].x/F, sky[19].y/F, sky[19].z/F);
+    glEnd();
+
+    glBindTexture(GL_TEXTURE_2D, skyBottomTexId);
+    glBegin(GL_QUADS);
+    glTexCoord2d(1, 1); glVertex3d(sky[20].x/F, sky[20].y/F, sky[20].z/F);
+    glTexCoord2d(1, 0); glVertex3d(sky[21].x/F, sky[21].y/F, sky[21].z/F);
+    glTexCoord2d(0, 0); glVertex3d(sky[22].x/F, sky[22].y/F, sky[22].z/F);
+    glTexCoord2d(0, 1); glVertex3d(sky[23].x/F, sky[23].y/F, sky[23].z/F);
     glEnd();
 }
 void drawLine(double x0, double y0, double z0,
@@ -106,9 +169,10 @@ void addWall()
         glBindTexture(GL_TEXTURE_2D, wallTexId);
         glBegin(GL_QUADS);
         glTexCoord2d(0, 0); glVertex3d(i[0].x/F, i[0].y/F, i[0].z/F);
-        glTexCoord2d(0, 1); glVertex3d(i[1].x/F, i[1].y/F, i[1].z/F);
-        glTexCoord2d(1, 1); glVertex3d(i[2].x/F, i[2].y/F, i[2].z/F);
-        glTexCoord2d(1, 0); glVertex3d(i[3].x/F, i[3].y/F, i[3].z/F);
+        glTexCoord2d(0, F*wallTexFactor/wallHeight); glVertex3d(i[1].x/F, i[1].y/F, i[1].z/F);
+        double wallLen = sqrt((i[2].x-i[1].x)*(i[2].x-i[1].x)+(i[2].z-i[1].z)*(i[2].z-i[1].z));
+        glTexCoord2d(wallLen/wallTexFactor/F, F*wallTexFactor/wallHeight); glVertex3d(i[2].x/F, i[2].y/F, i[2].z/F);
+        glTexCoord2d(wallLen/wallTexFactor/F, 0); glVertex3d(i[3].x/F, i[3].y/F, i[3].z/F);
         glEnd();
     }
 }
@@ -124,20 +188,38 @@ void addActor()
 			glVertex3d(actor[i-j].x, actor[i-j].y, actor[i-j].z);
 		glEnd();
 	}
+    if (openMap || showDre)
+    {
+        glColor3dv(WHITE);
+        glBegin(GL_QUADS);
+        glVertex3d(pointer[3].x, pointer[3].y, pointer[3].z);
+        glVertex3d(pointer[1].x, pointer[1].y, pointer[1].z);
+        glVertex3d(pointer[0].x, pointer[0].y, pointer[0].z);
+        glVertex3d(pointer[2].x, pointer[2].y, pointer[2].z);
+        glEnd();
+    }
 }
 void display(void)
 {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    glDisable(GL_DEPTH_TEST);
+    glLoadIdentity();
+    glRotated(obvRotateY, 1, 0, 0);
+    glRotated(obvRotateX, 0, 1, 0);
+    addSky();
+
+    glEnable(GL_DEPTH_TEST);
     glLoadIdentity();
     glLineWidth(3);
     updateObverse();
-	addGround();
+    addGround();
     addWall();
-	addActor();
+	if (! firstPerson) addActor();
 
-    drawLine(-300, 0, 0, 300, 0, 0, WHITE);
-    drawLine(0, -300, 0, 0, 300, 0, WHITE);
-    drawLine(0, 0, -300, 0, 0, 300, WHITE);
+    // drawLine(-300, 0, 0, 300, 0, 0, WHITE);
+    // drawLine(0, -300, 0, 0, 300, 0, WHITE);
+    // drawLine(0, 0, -300, 0, 0, 300, WHITE);
     glutSwapBuffers();
 }
 void reshape (int w, int h)
@@ -146,8 +228,8 @@ void reshape (int w, int h)
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
     if (openMap) glOrtho(-GZ*mapViewFac*w/h/F, GZ*mapViewFac*w/h/F,
-        -GZ*mapViewFac/F, GZ*mapViewFac/F, 0.1, 200);
-    else gluPerspective(60, (double)w/h, 0.1, 200);
+        -GZ*mapViewFac/F, GZ*mapViewFac/F, 0.1, siteDistance);
+    else gluPerspective(60, (double)w/h, 0.1, siteDistance);
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
     W = w, H = h;
@@ -198,17 +280,17 @@ void mouseClick(int button, int state, int x, int y)
         else mouseControlMove = false;
     }    
 }
-void obverseChange(double &obvRotate, double coord, double &lastRotate)
+void obverseChange(double &obvRotate, double coord, double &lastRotate, double obvMoveFac)
 {
-    obvRotate += obvFactor * (coord-lastRotate) / obvRadius;
+    obvRotate += obvMoveFac * (coord-lastRotate) / obvMoveRadius;
     lastRotate = coord;
 }
 void mouseClickMove(int x, int y)
 {
     if (! openMap)
     {
-        obverseChange(obvRotateX, x, lastRotateX);
-        obverseChange(obvRotateY, y, lastRotateY);
+        obverseChange(obvRotateX, x, lastRotateX, obvMoveFactorX);
+        obverseChange(obvRotateY, y, lastRotateY, obvMoveFactorY);
     }
 }
 void keyboardListener(unsigned char cmd, int x, int y)
@@ -221,25 +303,46 @@ void keyboardListener(unsigned char cmd, int x, int y)
         case 'd': moveRight = true; break;
         case 'q': turnLeft = true; break;
         case 'e': turnRight = true; break;
+        case 'r': showDre = !showDre; break;
         default: break;
     }
     if (openMap)
     {
         if (editMap)
         {
-            if (drawWall)
+            if (delWall)
             {
-                if (cmd == 't')
+                if (cmd == 'c')
                 {
-                    drawWall = false; 
+                    delWall = false;
+                }
+                else
+                {
 
+                }
+            }
+            else if (drawWall)
+            {
+                if (cmd=='x' || cmd=='f')
+                {
                     const Point &p = tmpWall[1];
                     const Point &q = tmpWall[2];
                     vector <Point> v;
                     getLine(p, q, v);
                     wallEx.push_back(v);
                     wall.push_back(tmpWall);
-                    tmpWall.clear();
+                    if (cmd == 'x') drawWall = false, tmpWall.clear();
+                    else
+                    {
+                        tmpWall = vector <Point> ({
+                            (Point) {0, GY, 0},
+                            (Point) {0, GY+wallHeight, 0},
+                            (Point) {0, GY+wallHeight, 0},
+                            (Point) {0, GY, 0},
+                        });
+                        actMoveStartX = ground[0].x+GX;
+                        actMoveStartZ = ground[0].z+GZ;
+                    }
                 }
                 else
                 {
@@ -250,7 +353,7 @@ void keyboardListener(unsigned char cmd, int x, int y)
             {
                 switch (cmd)
                 {
-                    case 't':
+                    case 'x':
                         drawWall = true;
                         tmpWall = vector <Point> ({
                             (Point) {0, GY, 0},
@@ -261,7 +364,8 @@ void keyboardListener(unsigned char cmd, int x, int y)
                         actMoveStartX = ground[0].x+GX;
                         actMoveStartZ = ground[0].z+GZ;
                     break;
-                    case 'r': editMap = false; break;
+                    case 'c': delWall = true; break;
+                    case 'z': editMap = false; break;
                     default: break;
                 }
             }
@@ -270,7 +374,7 @@ void keyboardListener(unsigned char cmd, int x, int y)
         {
             switch (cmd)
             {
-                case 'r': editMap = true; break;
+                case 'z': editMap = true; break;
                 case 'm':
                     openMap = false;
                     zoomIn = zoomOut = false;
@@ -355,7 +459,17 @@ void specialUpListener(int cmd, int x, int y)
         }
     }
 }
-void moveAlongWall(double delX, double delZ, double u, double v)
+bool _checkMovable(double delX, double delZ, int wall)
+{
+    static const double EPS = 5;
+    for (int i=0; i<wallEx.size(); i++)
+        for (int j=0; j<wallEx[i].size(); j++)
+            if (i!=wall && sqrt((wallEx[i][j].x+delX)*(wallEx[i][j].x+delX)
+                +(wallEx[i][j].z+delX)*(wallEx[i][j].z+delZ)) <= F*BALLSIZE+EPS)
+                return false;
+    return true;
+}
+void moveAlongWall(double delX, double delZ, double u, double v, int wall)
 {
     double r = sqrt(u*u+v*v);
     double s = u/r;
@@ -369,33 +483,42 @@ void moveAlongWall(double delX, double delZ, double u, double v)
     else if (abs(u) < EPS)
         l = cos(pi/2-atan(-delZ/delX))*sqrt(delX*delX+delZ*delZ);
     l = abs(l);
-    if (delX*u+delZ*v > 0) move(s*l, c*l);
-    else move(-s*l, -c*l);
+    if (delX*u+delZ*v > 0)
+    {
+        double dx = s*l, dz = c*l;
+        if (_checkMovable(dx, dz, wall))
+            move(dx, dz);
+    }
+    else
+    {
+        double dx = -s*l, dz = -c*l;
+        if (_checkMovable(dx, dz, wall))
+            move(dx, dz);
+    }
 }
 bool checkMovable(double delX, double delZ)
 {
-    static const int EPS = 3;
+    static const int EPS = 5;
     static const double EPS2 = 5;
     for (int i=0; i<wallEx.size(); i++)
         for (int j=0; j<wallEx[i].size(); j++)
             if (sqrt((wallEx[i][j].x+delX)*(wallEx[i][j].x+delX)
-                +(wallEx[i][j].z+delX)*(wallEx[i][j].z+delZ)) <= F+EPS2)
+                +(wallEx[i][j].z+delX)*(wallEx[i][j].z+delZ)) <= F*BALLSIZE+EPS2)
             {
-                double a1 = wallEx[i].front().z, b1 = wallEx[i].front().x,
-                    a2 = wallEx[i].back().z, b2 = wallEx[i].back().x,
-                    c = wall[i][2].x-wall[i][1].x, d = wall[i][2].z-wall[i][1].z;
-                if (j>EPS && j<wallEx[i].size()-1-EPS) moveAlongWall(delX, delZ, c, d);
-                else if (j <= EPS)
+                if (editMap && i>3) return true;
+                if (delWall && i>3)
                 {
-                    if (a1*c+b1*d < 0) moveAlongWall(delX, delZ, -a1, b1);
-                    else moveAlongWall(delX, delZ, c, d);
+                    wall.erase(wall.begin()+i);
+                    wallEx.erase(wallEx.begin()+i);
+                    return true;
                 }
-                else if (j >= wallEx[i].size()-1-EPS)
+                else
                 {
-                    if (a2*c+b2*d >= 0) moveAlongWall(delX, delZ, a2, -b2);
-                    else moveAlongWall(delX, delZ, c, d);
+                    double a = wall[i][2].x-wall[i][1].x, b = wall[i][2].z-wall[i][1].z;
+                    if (j>EPS && j<wallEx[i].size()-1-EPS)
+                        moveAlongWall(delX, delZ, a, b, i);
+                    return false;
                 }
-                return false;
             }
     return true;
 }
@@ -424,22 +547,29 @@ void sceneMoveLoop(int id)
     }
     if (turnLeft)
     {
-        actRotateX -= obvFactor * turnLeftStep / obvRadius;
+        actRotateX -= obvMoveFactorX * turnLeftStep / obvMoveRadius;
         obvRotateX = actRotateX;
-        rotateDY(actor, -obvRotateX);
+
+        rotateDY(actor, -obvRotateX+actLastAngX);
+        rotateDY(pointer, -obvRotateX+actLastAngX);
+        actLastAngX = obvRotateX;
     }
     if (turnRight)
     {
-        actRotateX += obvFactor * turnLeftStep / obvRadius;
+        actRotateX += obvMoveFactorX * turnLeftStep / obvMoveRadius;
         obvRotateX = actRotateX;
-        rotateDY(actor, -obvRotateX);
+
+        rotateDY(actor, -obvRotateX+actLastAngX);
+        rotateDY(pointer, -obvRotateX+actLastAngX);
+        actLastAngX = obvRotateX;
+        
+        // rotateDY(pointer, -obvRotateX);
     }
-    if (zoomIn && obvRadius>obvRadiusMin)
-        obvRadius -= zoomStep;
-    if (zoomOut && obvRadius<obvRadiusMax)
-        obvRadius += zoomStep;
-    if (editMap || checkMovable(delX, delZ))
-        move(delX, delZ);
+    if (zoomIn && obvLookRadius>obvRadiusMin)
+        obvLookRadius -= zoomStep;
+    if (zoomOut && obvLookRadius<obvRadiusMax)
+        obvLookRadius += zoomStep;
+    if (checkMovable(delX, delZ)) move(delX, delZ);
     glutPostRedisplay();
     glutTimerFunc(SCENESPEED, sceneMoveLoop, id);
 }
@@ -455,12 +585,61 @@ int main(int argc, char** argv)
 	// init
     getGround();
 	getBall(0, 0, 0, BALLSIZE, actor, BALLACC);
+    pointer = {{0, 0, -300./F}, {-50./F, 0, -200./F}, {50./F, 0, -200./F}, {0, 0, 0}};
+    sky = {
+            {-skyDistance, skyBottom+2*skyDistance, -skyDistance},
+            {-skyDistance, skyBottom+2*skyDistance, skyDistance},
+            {skyDistance, skyBottom+2*skyDistance, skyDistance},
+            {skyDistance, skyBottom+2*skyDistance, -skyDistance},
+
+            {skyDistance, skyBottom, -skyDistance},
+            {skyDistance, skyBottom, skyDistance},
+            {skyDistance, skyBottom+2*skyDistance, skyDistance},
+            {skyDistance, skyBottom+2*skyDistance, -skyDistance},
+
+            {-skyDistance, skyBottom, -skyDistance},
+            {-skyDistance, skyBottom, skyDistance},
+            {-skyDistance, skyBottom+2*skyDistance, skyDistance},
+            {-skyDistance, skyBottom+2*skyDistance, -skyDistance},
+
+            {-skyDistance, skyBottom, skyDistance},
+            {-skyDistance, skyBottom+2*skyDistance, skyDistance},
+            {skyDistance, skyBottom+2*skyDistance, skyDistance},
+            {skyDistance, skyBottom, skyDistance},
+
+            {-skyDistance, skyBottom, -skyDistance},
+            {-skyDistance, skyBottom+2*skyDistance, -skyDistance},
+            {skyDistance, skyBottom+2*skyDistance, -skyDistance},
+            {skyDistance, skyBottom, -skyDistance},
+
+            {-skyDistance, skyBottom, -skyDistance},
+            {-skyDistance, skyBottom, skyDistance},
+            {skyDistance, skyBottom, skyDistance},
+            {skyDistance, skyBottom, -skyDistance}
+        };
+    wall = {
+        {{-GX, GY, -GZ}, {-GX, GY+wallHeight, -GZ}, {GX, GY+wallHeight, -GZ}, {GX, GY, -GZ}},
+        {{-GX, GY, GZ}, {-GX, GY+wallHeight, GZ}, {GX, GY+wallHeight, GZ}, {GX, GY, GZ}},
+        {{-GX, GY, -GZ}, {-GX, GY+wallHeight, -GZ}, {-GX, GY+wallHeight, GZ}, {-GX, GY, GZ}},
+        {{GX, GY, -GZ}, {GX, GY+wallHeight, -GZ}, {GX, GY+wallHeight, GZ}, {GX, GY, GZ}},
+    };
+    vector <Point> a, b, c, d;
+    getLine({-GX, GY+wallHeight, -GZ}, {GX, GY+wallHeight, -GZ}, a);
+    getLine({-GX, GY+wallHeight, GZ}, {GX, GY+wallHeight, GZ}, b);
+    getLine({-GX, GY+wallHeight, -GZ}, {-GX, GY+wallHeight, GZ}, c);
+    getLine({GX, GY+wallHeight, -GZ}, {GX, GY+wallHeight, GZ}, d);
+    wallEx = { a, b, c, d};
 	groundTexId = loadTexture("1.bmp");
     // ball = loadTexture("2.bmp");
     wallTexId = loadTexture("3.bmp");
+    skyTopTexId = loadTexture("skybox/top.bmp");
+    skyBottomTexId = loadTexture("skybox/bottom.bmp");
+    skyFrontTexId = loadTexture("skybox/front.bmp");
+    skyBackTexId = loadTexture("skybox/back.bmp");
+    skyLeftTexId = loadTexture("skybox/left.bmp");
+    skyRightTexId = loadTexture("skybox/right.bmp");
     
     // rendering
-    glEnable(GL_DEPTH_TEST);
     glEnable(GL_TEXTURE_2D);
     glutDisplayFunc(display); 
     glutReshapeFunc(reshape);

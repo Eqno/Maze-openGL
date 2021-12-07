@@ -57,21 +57,10 @@ void rotateZ(std::vector <Point> &v, double angle)
 { rotateRZ(v, angle); }
 void rotateDX(std::vector <Point> &v, double angle)
 { rotateX(v, angle*atan(1)/45); }
-
-double lastAngY = 0, lastAngZ = 0;
 void rotateDY(std::vector <Point> &v, double angle)
-{
-    double del = angle - lastAngY;
-    rotateY(v, del*atan(1)/45);
-    lastAngY = angle;
-}
+{ rotateY(v, angle*atan(1)/45); }
 void rotateDZ(std::vector <Point> &v, double angle)
-{
-	double del = angle - lastAngZ;
-	rotateZ(v, del*atan(1)/45);
-	lastAngZ = angle;
-}
-
+{ rotateZ(v, angle*atan(1)/45); }
 void symX(std::vector <Point> &v)
 { transform(v, 1, 0, 0, 0, -1, 0, 0, 0, -1, 0, 0, 0, 0, 0, 0, 1); }
 void symY(std::vector <Point> &v)
