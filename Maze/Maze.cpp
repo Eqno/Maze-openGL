@@ -1,5 +1,5 @@
 #include "./texture.cpp"
-#include "./ball.cpp"
+#include "./circle.cpp"
 #include <algorithm>
 #include <cmath>
 #include <gl/freeglut_std.h>
@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <vector>
 #include <wingdi.h>
+#include <winnt.h>
 using namespace std;
 
 // wasd 移动，qe 旋转，m 打开地图，z 编辑地图，x 增加墙，f 放置墙，
@@ -19,12 +20,14 @@ int groundTexId = 0, ball = 0, wallTexId = 0,
     skyFrontTexId = 0, skyBackTexId = 0,
     skyLeftTexId = 0, skyRightTexId = 0;
 int W = 1600, H = 900, F = 100;
-unsigned int SCENESPEED = 5, SCENEID = 0, BALLACC = 20;
-double GX = 9000, GY = -200, GZ = 16000, BALLSIZE = 0.5;
+unsigned int SCENESPEED = 5, SCENEID = 0, BALLACC = 20,
+    ACTROTATESPEED = 5, ACTROTATEID = 1;
+double GX = 9000, GY = -200, GZ = 16000, BALLSIZE = 0.3;
+double bodyWidth = 3, bodyHeight = 100, stepWidth = 20;
 
 double wallTexFactor = 5, groundTexFactor = 50,
     obvRotateX = 0, obvRotateY = 0, actStep = 5,
-    turnLeftStep = 1, turnRightStep = 1,
+    turnLeftStep = 1, turnRightStep = 1, bodyRotateStep = 2,
     obvMoveFactorX = 1.2, obvMoveFactorY = 0.5, obvMoveRadius = 3,
     obvLookRadius = 3, zoomStep = 0.05, obvRadiusMax = 8, obvRadiusMin = 1.3,
     mapViewFac = 0.7, mapViewHeight = 5000, wallHeight = 500,
@@ -36,17 +39,25 @@ bool openMap = false, firstPerson = false,
     moveLeft = false, moveRight = false, moveForward = false, moveBack = false,
     editMap = false, drawWall = false, delWall = false, showDre = false;
 
-double actRotateX = obvRotateX,
+double armSwingX = 0, armSwingE = 50, armSwingStep = 0.7,
+    actRotateX = obvRotateX,
+    bodyRotateX = -actRotateX,
+    bodyRotateE = bodyRotateX,
     lastRotateX = obvRotateX,
     lastRotateY = obvRotateY,
     actMoveStartX = 0, actMoveStartZ = 0,
     actMoveEndX = 0, actMoveEndZ = 0;
 
-vector <Point> actor, ground, tmpWall, pointer, sky;
+vector <Point> actor, body, leftLeg, rightLeg, leftArm, rightArm,
+    ground, tmpWall, pointer, sky;
 vector <vector <Point>> wall, wallEx;
 
 double actLastAngX = 0;
-
+void adjustBodyRotateE()
+{
+    if (bodyRotateE > 180) bodyRotateE -= 360;
+    if (bodyRotateE < -180) bodyRotateE += 360;
+}
 void updateObverse()
 {   
     if (openMap)
@@ -68,6 +79,8 @@ void updateObverse()
         glRotated(obvRotateX, 0, 1, 0);
         if (mouseRightDown)
         {
+            bodyRotateE = -obvRotateX;
+            adjustBodyRotateE();
             rotateDY(actor, -obvRotateX+actLastAngX);
             rotateDY(pointer, -obvRotateX+actLastAngX);
             actLastAngX = obvRotateX;
@@ -176,10 +189,16 @@ void addWall()
         glEnd();
     }
 }
+void addMatch(const vector <Point> &match)
+{
+    glBegin(GL_LINE_LOOP);
+    for (auto i: match) glVertex3d(i.x/F, i.y/F, i.z/F);
+    glEnd();
+}
 void addActor()
 {
 	glBindTexture(GL_TEXTURE_2D, 0);
-	glColor3dv(YELLOW);
+	glColor3dv(BLACK);
 	for (int i=3; i<actor.size(); i+=4)
 	{
         // glBindTexture(GL_TEXTURE_2D, ball);
@@ -188,6 +207,7 @@ void addActor()
 			glVertex3d(actor[i-j].x, actor[i-j].y, actor[i-j].z);
 		glEnd();
 	}
+    addMatch(body), addMatch(leftLeg), addMatch(rightLeg), addMatch(leftArm), addMatch(rightArm);
     if (openMap || showDre)
     {
         glColor3dv(WHITE);
@@ -527,21 +547,33 @@ void sceneMoveLoop(int id)
     double delX = 0, delZ = 0;
     if (moveLeft) 
     {
+        // adjustBodyDre(-actRotateX+60);
+        bodyRotateE = -actRotateX+60;
+        adjustBodyRotateE();
         delX = actStep * cos(actRotateX/180*pi);
         delZ = actStep * sin(actRotateX/180*pi);
     }
     if (moveRight) 
     {
+        // adjustBodyDre(-actRotateX-60);
+        bodyRotateE = -actRotateX-60;
+        adjustBodyRotateE();
         delX = -actStep * cos(actRotateX/180*pi);
         delZ = -actStep * sin(actRotateX/180*pi);
     }
     if (moveForward || mouseControlMove) 
     {
+        // adjustBodyDre(-actRotateX);
+        bodyRotateE = -actRotateX;
+        adjustBodyRotateE();
         delX = -actStep * sin(actRotateX/180*pi);
         delZ = actStep * cos(actRotateX/180*pi);
     }
     if (moveBack) 
     {
+        // adjustBodyDre(-actRotateX+180);
+        bodyRotateE = -actRotateX+180;
+        adjustBodyRotateE();
         delX = actStep * sin(actRotateX/180*pi);
         delZ = -actStep * cos(actRotateX/180*pi);
     }
@@ -573,19 +605,80 @@ void sceneMoveLoop(int id)
     glutPostRedisplay();
     glutTimerFunc(SCENESPEED, sceneMoveLoop, id);
 }
-int main(int argc, char** argv)
+void rotateLeft()
 {
-    // window
-    glutInit(&argc, argv);
-    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH);
-    glutInitWindowSize(W, H); 
-    glutInitWindowPosition(0, 0);
-    glutCreateWindow("Maze");
-
-	// init
-    getGround();
-	getBall(0, 0, 0, BALLSIZE, actor, BALLACC);
-    pointer = {{0, 0, -300./F}, {-50./F, 0, -200./F}, {50./F, 0, -200./F}, {0, 0, 0}};
+    bodyRotateX -= bodyRotateStep;
+    if (bodyRotateX < -180) bodyRotateX += 360;
+}
+void rotateRight()
+{
+    bodyRotateX += bodyRotateStep;
+    if (bodyRotateX > 180) bodyRotateX -= 360;
+}
+void swingArm()
+{
+    if (armSwingE > 0)
+    {
+        if (armSwingX < armSwingE)
+        {
+            armSwingX += armSwingStep;
+            swingIndArm(armSwingStep, F*BALLSIZE);
+            swingIndLeg(-armSwingStep, bodyHeight);
+        }
+        else armSwingE = -armSwingE;
+    }
+    else
+    {
+        if (armSwingX > armSwingE)
+        {
+            armSwingX -= armSwingStep;
+            swingIndArm(-armSwingStep, F*BALLSIZE);
+            swingIndLeg(armSwingStep, bodyHeight);
+        }
+        else armSwingE = -armSwingE;
+    }
+    cout << armSwingX << endl;
+}
+void actRotateLoop(int id)
+{
+    if (moveForward || mouseControlMove || moveLeft || moveRight || moveBack) swingArm();
+    static double EPS = 4;
+    double delta = bodyRotateE - bodyRotateX;
+    if (abs(delta) > EPS)
+    {
+        if (delta<0&&delta>-180 || delta>0&&delta>180) rotateLeft();
+        if (delta<0&&delta<-180 || delta>0&&delta<180) rotateRight();
+    }
+    rotateIndLeftLeg(leftLeg, bodyRotateX);
+    rotateIndRightLeg(rightLeg, bodyRotateX);
+    rotateIndLeftArm(leftArm, bodyRotateX);
+    rotateIndRightArm(rightArm, bodyRotateX);
+    glutPostRedisplay();
+    glutTimerFunc(ACTROTATESPEED, actRotateLoop, id);
+}
+void makeMatch(double topx, double topy, double bottomx, double bottomy,
+    double matchWidth, double topd, double bottomd, vector <Point> &res)
+{
+    vector <Point> top, bottom;
+    getCircle(topx, topy, matchWidth, topd, top);
+    getCircle(bottomx, bottomy, matchWidth, bottomd, bottom);
+    for (int i=0; i<top.size(); i++)
+    {
+        res.push_back({top[i].x, top[i].y, top[i].z});
+        res.push_back({bottom[i].x, bottom[i].y, bottom[i].z});
+    }
+}
+void makeBody()
+{
+    makeMatch(0, 0, 0, 0, bodyWidth, -F*BALLSIZE, -bodyHeight, body);
+    makeMatch(0, 0, -stepWidth, 0, bodyWidth, -bodyHeight, GY, leftLeg);
+    makeMatch(0, 0, stepWidth, 0, bodyWidth, -bodyHeight, GY, rightLeg);
+    makeMatch(0, 0, -stepWidth, 0, bodyWidth, -F*BALLSIZE, -bodyHeight, leftArm);
+    makeMatch(0, 0, stepWidth, 0, bodyWidth, -F*BALLSIZE, -bodyHeight, rightArm);
+    initInd(leftLeg, rightLeg, leftArm, rightArm);
+}
+void makeSky()
+{
     sky = {
             {-skyDistance, skyBottom+2*skyDistance, -skyDistance},
             {-skyDistance, skyBottom+2*skyDistance, skyDistance},
@@ -617,6 +710,9 @@ int main(int argc, char** argv)
             {skyDistance, skyBottom, skyDistance},
             {skyDistance, skyBottom, -skyDistance}
         };
+}
+void makeBorder()
+{
     wall = {
         {{-GX, GY, -GZ}, {-GX, GY+wallHeight, -GZ}, {GX, GY+wallHeight, -GZ}, {GX, GY, -GZ}},
         {{-GX, GY, GZ}, {-GX, GY+wallHeight, GZ}, {GX, GY+wallHeight, GZ}, {GX, GY, GZ}},
@@ -629,6 +725,23 @@ int main(int argc, char** argv)
     getLine({-GX, GY+wallHeight, -GZ}, {-GX, GY+wallHeight, GZ}, c);
     getLine({GX, GY+wallHeight, -GZ}, {GX, GY+wallHeight, GZ}, d);
     wallEx = { a, b, c, d};
+}
+int main(int argc, char** argv)
+{
+    // window
+    glutInit(&argc, argv);
+    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH);
+    glutInitWindowSize(W, H); 
+    glutInitWindowPosition(0, 0);
+    glutCreateWindow("Maze");
+
+	// init
+    getGround();
+	getBall(0, 0, 0, BALLSIZE, actor, BALLACC);
+    makeBody();
+    makeSky();
+    pointer = {{0, 0, -300./F}, {-50./F, 0, -200./F}, {50./F, 0, -200./F}, {0, 0, 0}};
+    makeBorder();
 	groundTexId = loadTexture("1.bmp");
     // ball = loadTexture("2.bmp");
     wallTexId = loadTexture("3.bmp");
@@ -638,6 +751,9 @@ int main(int argc, char** argv)
     skyBackTexId = loadTexture("skybox/back.bmp");
     skyLeftTexId = loadTexture("skybox/left.bmp");
     skyRightTexId = loadTexture("skybox/right.bmp");
+
+    // debug
+    // bodyRotateE = bodyRotateX = actRotateX = 90;
     
     // rendering
     glEnable(GL_TEXTURE_2D);
@@ -655,6 +771,7 @@ int main(int argc, char** argv)
 
     // loop
     glutTimerFunc(SCENESPEED, sceneMoveLoop, SCENEID);
+    glutTimerFunc(ACTROTATESPEED, actRotateLoop, ACTROTATEID);
     glutMainLoop();
     return 0;
 }

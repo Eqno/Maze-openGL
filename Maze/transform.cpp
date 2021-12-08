@@ -1,7 +1,7 @@
 #include "./line.cpp"
 void transform(std::vector <Point> &v, 
 	double a, double b, double c, double d, double e, double f,
-	double g, double h, double i, int l, int m, int n, 
+	double g, double h, double i, double l, double m, double n, 
 	double p, double q, double r, double s)
 {
 	for (int j=0; j<v.size(); j++)
@@ -14,13 +14,13 @@ void transform(std::vector <Point> &v,
 		v[j].x = x, v[j].y = y, v[j].z = z;
 	}
 }
-void translateX(std::vector <Point> &v, int l)
+void translateX(std::vector <Point> &v, double l)
 { transform(v, 1, 0, 0, 0, 1, 0, 0, 0, 1, l, 0, 0, 0, 0, 0, 1); }
-void translateY(std::vector <Point> &v, int m)
+void translateY(std::vector <Point> &v, double m)
 { transform(v, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, m, 0, 0, 0, 0, 1); }
-void translateZ(std::vector <Point> &v, int n)
+void translateZ(std::vector <Point> &v, double n)
 { transform(v, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, n, 0, 0, 0, 1); }
-void translate(std::vector <Point> &v, int l, int m, int n)
+void translate(std::vector <Point> &v, double l, double m, double n)
 { transform(v, 1, 0, 0, 0, 1, 0, 0, 0, 1, l, m, n, 0, 0, 0, 1); }
 
 void scale(std::vector <Point> &v, double s)
@@ -59,6 +59,54 @@ void rotateDX(std::vector <Point> &v, double angle)
 { rotateX(v, angle*atan(1)/45); }
 void rotateDY(std::vector <Point> &v, double angle)
 { rotateY(v, angle*atan(1)/45); }
+
+std::vector <Point> initLeftLeg, initRightLeg, initLeftArm, initRightArm;
+void initInd(const std::vector <Point> &leftLeg, const std::vector <Point> &rightLeg,
+	const std::vector <Point> &leftArm, const std::vector <Point> &rightArm)
+{ initLeftLeg = leftLeg, initRightLeg = rightLeg, initLeftArm = leftArm, initRightArm = rightArm; }
+void rotateIndLeftLeg(std::vector <Point> &v, double angle)
+{ 
+	std::vector <Point> res(initLeftLeg);
+	rotateY(res, angle*atan(1)/45);
+	v = res;
+}
+void rotateIndRightLeg(std::vector <Point> &v, double angle)
+{ 
+	std::vector <Point> res(initRightLeg);
+	rotateY(res, angle*atan(1)/45);
+	v = res;
+}
+void rotateIndLeftArm(std::vector <Point> &v, double angle)
+{ 
+	std::vector <Point> res(initLeftArm);
+	rotateY(res, angle*atan(1)/45);
+	v = res;
+}
+void rotateIndRightArm(std::vector <Point> &v, double angle)
+{ 
+	std::vector <Point> res(initRightArm);
+	rotateY(res, angle*atan(1)/45);
+	v = res;
+}
+void swingIndArm(double angle, double depth)
+{
+	translateY(initLeftArm, depth);
+	translateY(initRightArm, depth);
+	rotateY(initLeftArm, angle*atan(1)/45);
+	rotateY(initRightArm, angle*atan(1)/45);
+	translateY(initLeftArm, -depth);
+	translateY(initRightArm, -depth);
+}
+void swingIndLeg(double angle, double depth)
+{
+	translateY(initLeftLeg, depth);
+	translateY(initRightLeg, depth);
+	rotateY(initLeftLeg, angle*atan(1)/45);
+	rotateY(initRightLeg, angle*atan(1)/45);
+	translateY(initLeftLeg, -depth);
+	translateY(initRightLeg, -depth);
+}
+
 void rotateDZ(std::vector <Point> &v, double angle)
 { rotateZ(v, angle*atan(1)/45); }
 void symX(std::vector <Point> &v)
