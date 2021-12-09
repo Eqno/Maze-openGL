@@ -525,13 +525,13 @@ bool checkMovable(double delX, double delZ)
             if (sqrt((wallEx[i][j].x+delX)*(wallEx[i][j].x+delX)
                 +(wallEx[i][j].z+delX)*(wallEx[i][j].z+delZ)) <= F*BALLSIZE+EPS2)
             {
-                if (editMap && i>3) return true;
                 if (delWall && i>3)
                 {
                     wall.erase(wall.begin()+i);
                     wallEx.erase(wallEx.begin()+i);
                     return true;
                 }
+                else if (editMap && i>3) return true;
                 else
                 {
                     double a = wall[i][2].x-wall[i][1].x, b = wall[i][2].z-wall[i][1].z;
