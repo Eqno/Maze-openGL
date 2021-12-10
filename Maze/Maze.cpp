@@ -11,9 +11,11 @@
 #include <wingdi.h>
 #include <winnt.h>
 using namespace std;
-
-// wasd 移动，qe 旋转，m 打开地图，z 编辑地图，x 增加墙，f 放置墙，
-// c 删除墙，v 切换视角， r 显示朝向, ↑ 推进镜头，↓ 拉远镜头。
+/*
+wasd 移动，按住 shift 跑步，qe 旋转，m 打开地图，z 编辑地图，x 增加墙，
+f 放置墙，c 删除墙，v 切换视角， t 显示朝向, ↑ 推进镜头，↓ 拉远镜头。
+n 检测 shift 用。
+*/
 
 int groundTexId = 0, ball = 0, wallTexId = 0, 
     skyTopTexId = 0, skyBottomTexId = 0,
@@ -23,10 +25,12 @@ int W = 1600, H = 900, F = 100;
 unsigned int SCENESPEED = 5, SCENEID = 0, BALLACC = 20,
     ACTROTATESPEED = 5, ACTROTATEID = 1;
 double GX = 9000, GY = -200, GZ = 16000, BALLSIZE = 0.3;
-double bodyWidth = 3, bodyHeight = 100, stepWidth = 20;
+double bodyWidth = 3, bodyHeight = 100, armStepWidth = 20,
+    legStepWidth = 15, armLongerThanLeg = 10;
 
 double wallTexFactor = 5, groundTexFactor = 50,
-    obvRotateX = 0, obvRotateY = 0, actStep = 5,
+    obvRotateX = 0, obvRotateY = 0,
+    actStepWalk = 2, actStepRun = 5, actStep = actStepWalk,  // walk speed
     turnLeftStep = 1, turnRightStep = 1, bodyRotateStep = 2,
     obvMoveFactorX = 1.2, obvMoveFactorY = 0.5, obvMoveRadius = 3,
     obvLookRadius = 3, zoomStep = 0.05, obvRadiusMax = 8, obvRadiusMin = 1.3,
@@ -39,7 +43,12 @@ bool openMap = false, firstPerson = false,
     moveLeft = false, moveRight = false, moveForward = false, moveBack = false,
     editMap = false, drawWall = false, delWall = false, showDre = false;
 
-double armSwingX = 0, armSwingE = 50, armSwingStep = 0.7,
+double armSwingX = 0, 
+    armSwingEWalk = 20, armSwingStepWalk = 0.3,
+    armSwingERun = 30, armSwingStepRun = 1,
+    armSwingEE = armSwingEWalk,
+    armSwingE = armSwingEE,
+    armSwingStep = armSwingStepWalk,
     actRotateX = obvRotateX,
     bodyRotateX = -actRotateX,
     bodyRotateE = bodyRotateX,
@@ -324,6 +333,16 @@ void keyboardListener(unsigned char cmd, int x, int y)
         case 'q': turnLeft = true; break;
         case 'e': turnRight = true; break;
         case 'r': showDre = !showDre; break;
+        case 'n':
+            actStep = actStepWalk;
+            armSwingEE = armSwingEWalk;
+            armSwingStep = armSwingStepWalk;
+            break;
+        case 'N':
+            actStep = actStepRun;
+            armSwingEE = armSwingERun;
+            armSwingStep = armSwingStepRun;
+        break;
         default: break;
     }
     if (openMap)
@@ -544,8 +563,9 @@ bool checkMovable(double delX, double delZ)
 }
 void sceneMoveLoop(int id)
 {
+    keybd_event('N', 0, 0, 0);  // 模拟按下 n 键，检测 shift。
     double delX = 0, delZ = 0;
-    if (moveLeft) 
+    if (moveLeft)
     {
         // adjustBodyDre(-actRotateX+60);
         bodyRotateE = -actRotateX+60;
@@ -553,7 +573,7 @@ void sceneMoveLoop(int id)
         delX = actStep * cos(actRotateX/180*pi);
         delZ = actStep * sin(actRotateX/180*pi);
     }
-    if (moveRight) 
+    if (moveRight)
     {
         // adjustBodyDre(-actRotateX-60);
         bodyRotateE = -actRotateX-60;
@@ -594,8 +614,6 @@ void sceneMoveLoop(int id)
         rotateDY(actor, -obvRotateX+actLastAngX);
         rotateDY(pointer, -obvRotateX+actLastAngX);
         actLastAngX = obvRotateX;
-        
-        // rotateDY(pointer, -obvRotateX);
     }
     if (zoomIn && obvLookRadius>obvRadiusMin)
         obvLookRadius -= zoomStep;
@@ -617,31 +635,49 @@ void rotateRight()
 }
 void swingArm()
 {
-    if (armSwingE > 0)
+    static const double EPS = 1;
+    if (moveForward || mouseControlMove || moveLeft || moveRight || moveBack)
     {
-        if (armSwingX < armSwingE)
+        if (armSwingE > 0)
+        {
+            if (armSwingX < armSwingE)
+            {
+                armSwingX += armSwingStep;
+                swingIndArm(armSwingStep, F*BALLSIZE);
+                swingIndLeg(-armSwingStep, bodyHeight);
+            }
+            else armSwingE = -armSwingEE;
+        }
+        else
+        {
+            if (armSwingX > armSwingE)
+            {
+                armSwingX -= armSwingStep;
+                swingIndArm(-armSwingStep, F*BALLSIZE);
+                swingIndLeg(armSwingStep, bodyHeight);
+            }
+            else armSwingE = armSwingEE;
+        }
+    }
+    else
+    {
+        if (armSwingX < -EPS)
         {
             armSwingX += armSwingStep;
             swingIndArm(armSwingStep, F*BALLSIZE);
             swingIndLeg(-armSwingStep, bodyHeight);
         }
-        else armSwingE = -armSwingE;
-    }
-    else
-    {
-        if (armSwingX > armSwingE)
+        else if (armSwingX > EPS)
         {
             armSwingX -= armSwingStep;
             swingIndArm(-armSwingStep, F*BALLSIZE);
             swingIndLeg(armSwingStep, bodyHeight);
         }
-        else armSwingE = -armSwingE;
     }
-    cout << armSwingX << endl;
 }
 void actRotateLoop(int id)
 {
-    if (moveForward || mouseControlMove || moveLeft || moveRight || moveBack) swingArm();
+    swingArm();
     static double EPS = 4;
     double delta = bodyRotateE - bodyRotateX;
     if (abs(delta) > EPS)
@@ -671,10 +707,10 @@ void makeMatch(double topx, double topy, double bottomx, double bottomy,
 void makeBody()
 {
     makeMatch(0, 0, 0, 0, bodyWidth, -F*BALLSIZE, -bodyHeight, body);
-    makeMatch(0, 0, -stepWidth, 0, bodyWidth, -bodyHeight, GY, leftLeg);
-    makeMatch(0, 0, stepWidth, 0, bodyWidth, -bodyHeight, GY, rightLeg);
-    makeMatch(0, 0, -stepWidth, 0, bodyWidth, -F*BALLSIZE, -bodyHeight, leftArm);
-    makeMatch(0, 0, stepWidth, 0, bodyWidth, -F*BALLSIZE, -bodyHeight, rightArm);
+    makeMatch(0, 0, -legStepWidth, 0, bodyWidth, -bodyHeight, GY, leftLeg);
+    makeMatch(0, 0, legStepWidth, 0, bodyWidth, -bodyHeight, GY, rightLeg);
+    makeMatch(0, 0, -armStepWidth, 0, bodyWidth, -F*BALLSIZE, -bodyHeight-armLongerThanLeg, leftArm);
+    makeMatch(0, 0, armStepWidth, 0, bodyWidth, -F*BALLSIZE, -bodyHeight-armLongerThanLeg, rightArm);
     initInd(leftLeg, rightLeg, leftArm, rightArm);
 }
 void makeSky()

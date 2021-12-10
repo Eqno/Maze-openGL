@@ -92,8 +92,8 @@ void swingIndArm(double angle, double depth)
 {
 	translateY(initLeftArm, depth);
 	translateY(initRightArm, depth);
-	rotateY(initLeftArm, angle*atan(1)/45);
-	rotateY(initRightArm, angle*atan(1)/45);
+	rotateX(initLeftArm, angle*atan(1)/45);
+	rotateX(initRightArm, -angle*atan(1)/45);
 	translateY(initLeftArm, -depth);
 	translateY(initRightArm, -depth);
 }
@@ -101,8 +101,8 @@ void swingIndLeg(double angle, double depth)
 {
 	translateY(initLeftLeg, depth);
 	translateY(initRightLeg, depth);
-	rotateY(initLeftLeg, angle*atan(1)/45);
-	rotateY(initRightLeg, angle*atan(1)/45);
+	rotateX(initLeftLeg, angle*atan(1)/45);
+	rotateX(initRightLeg, -angle*atan(1)/45);
 	translateY(initLeftLeg, -depth);
 	translateY(initRightLeg, -depth);
 }
