@@ -1,4 +1,5 @@
 #include "./line.cpp"
+#include <vector>
 void transform(std::vector <Point> &v, 
 	double a, double b, double c, double d, double e, double f,
 	double g, double h, double i, double l, double m, double n, 
@@ -105,6 +106,13 @@ void swingIndLeg(double angle, double depth)
 	rotateX(initRightLeg, -angle*atan(1)/45);
 	translateY(initLeftLeg, -depth);
 	translateY(initRightLeg, -depth);
+}
+void bodyTranslateY(double delta)
+{
+	translateY(initLeftLeg, delta);
+	translateY(initRightLeg, delta);
+	translateY(initLeftArm, delta);
+	translateY(initRightArm, delta);
 }
 
 void rotateDZ(std::vector <Point> &v, double angle)

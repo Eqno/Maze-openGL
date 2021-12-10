@@ -23,7 +23,8 @@ int groundTexId = 0, ball = 0, wallTexId = 0,
     skyLeftTexId = 0, skyRightTexId = 0;
 int W = 1600, H = 900, F = 100;
 unsigned int SCENESPEED = 5, SCENEID = 0, BALLACC = 20,
-    ACTROTATESPEED = 5, ACTROTATEID = 1;
+    ACTROTATESPEED = 5, ACTROTATEID = 1,
+    ACTORJUMPSPEED = 2, ACTORJUMPID = 2;
 double GX = 9000, GY = -200, GZ = 16000, BALLSIZE = 0.3;
 double bodyWidth = 3, bodyHeight = 100, armStepWidth = 20,
     legStepWidth = 15, armLongerThanLeg = 10;
@@ -37,7 +38,7 @@ double wallTexFactor = 5, groundTexFactor = 50,
     mapViewFac = 0.7, mapViewHeight = 5000, wallHeight = 500,
     skyBottom = -500, skyDistance = 500, siteDistance = 500;
     
-bool openMap = false, firstPerson = false,
+bool openMap = false, firstPerson = false, windowFoucus = false, jump = false, folowJump = true,
     mouseLeftDown = false, mouseRightDown = false, mouseControlMove = false,
     turnLeft = false, turnRight = false, zoomIn = false, zoomOut = false,
     moveLeft = false, moveRight = false, moveForward = false, moveBack = false,
@@ -56,6 +57,8 @@ double armSwingX = 0,
     lastRotateY = obvRotateY,
     actMoveStartX = 0, actMoveStartZ = 0,
     actMoveEndX = 0, actMoveEndZ = 0;
+
+double actDepth = 0, actJumpVE = 1, actJumpV = 0, actJumpA = 0.005;
 
 vector <Point> actor, body, leftLeg, rightLeg, leftArm, rightArm,
     ground, tmpWall, pointer, sky;
@@ -78,6 +81,8 @@ void updateObverse()
     {
         if (firstPerson) glTranslated(0, 0, 0);
         else glTranslated(0, 0, -obvLookRadius);
+        glTranslated(0, -actDepth/F*cos(obvRotateY/180*pi), 0);
+        glTranslated(0, 0, -actDepth/F*sin(obvRotateY/180*pi));
         if (obvRotateX > 180) obvRotateX = -180;
         if (obvRotateX < -180) obvRotateX = 180;
         if (obvRotateY > 180) obvRotateY = -180;
@@ -208,14 +213,17 @@ void addActor()
 {
 	glBindTexture(GL_TEXTURE_2D, 0);
 	glColor3dv(BLACK);
-	for (int i=3; i<actor.size(); i+=4)
-	{
-        // glBindTexture(GL_TEXTURE_2D, ball);
-		glBegin(GL_LINE_LOOP);
-		for (int j=0; j<3; j++)
-			glVertex3d(actor[i-j].x, actor[i-j].y, actor[i-j].z);
-		glEnd();
-	}
+    if ((!firstPerson) || openMap)
+    {
+        for (int i=3; i<actor.size(); i+=4)
+        {
+            // glBindTexture(GL_TEXTURE_2D, ball);
+            glBegin(GL_LINE_LOOP);
+            for (int j=0; j<3; j++)
+                glVertex3d(actor[i-j].x, actor[i-j].y, actor[i-j].z);
+            glEnd();
+        }
+    }
     addMatch(body), addMatch(leftLeg), addMatch(rightLeg), addMatch(leftArm), addMatch(rightArm);
     if (openMap || showDre)
     {
@@ -244,7 +252,7 @@ void display(void)
     updateObverse();
     addGround();
     addWall();
-	if (! firstPerson) addActor();
+	addActor();
 
     // drawLine(-300, 0, 0, 300, 0, 0, WHITE);
     // drawLine(0, -300, 0, 0, 300, 0, WHITE);
@@ -333,6 +341,7 @@ void keyboardListener(unsigned char cmd, int x, int y)
         case 'q': turnLeft = true; break;
         case 'e': turnRight = true; break;
         case 'r': showDre = !showDre; break;
+        case ' ': if (! jump) actJumpV = actJumpVE; break;
         case 'n':
             actStep = actStepWalk;
             armSwingEE = armSwingEWalk;
@@ -498,6 +507,11 @@ void specialUpListener(int cmd, int x, int y)
         }
     }
 }
+void windowFoucusListener(int state)
+{
+    if (state == GLUT_LEFT) windowFoucus = false;
+    if (state == GLUT_ENTERED) windowFoucus = true;
+}
 bool _checkMovable(double delX, double delZ, int wall)
 {
     static const double EPS = 5;
@@ -563,7 +577,7 @@ bool checkMovable(double delX, double delZ)
 }
 void sceneMoveLoop(int id)
 {
-    keybd_event('N', 0, 0, 0);  // 模拟按下 n 键，检测 shift。
+    if(windowFoucus) keybd_event('N', 0, 0, 0);  // 模拟按下 n 键，检测 shift。
     double delX = 0, delZ = 0;
     if (moveLeft)
     {
@@ -643,8 +657,8 @@ void swingArm()
             if (armSwingX < armSwingE)
             {
                 armSwingX += armSwingStep;
-                swingIndArm(armSwingStep, F*BALLSIZE);
-                swingIndLeg(-armSwingStep, bodyHeight);
+                swingIndArm(armSwingStep, F*BALLSIZE-actDepth);
+                swingIndLeg(-armSwingStep, bodyHeight-actDepth);
             }
             else armSwingE = -armSwingEE;
         }
@@ -653,8 +667,8 @@ void swingArm()
             if (armSwingX > armSwingE)
             {
                 armSwingX -= armSwingStep;
-                swingIndArm(-armSwingStep, F*BALLSIZE);
-                swingIndLeg(armSwingStep, bodyHeight);
+                swingIndArm(-armSwingStep, F*BALLSIZE-actDepth);
+                swingIndLeg(armSwingStep, bodyHeight-actDepth);
             }
             else armSwingE = armSwingEE;
         }
@@ -677,8 +691,8 @@ void swingArm()
 }
 void actRotateLoop(int id)
 {
-    swingArm();
-    static double EPS = 4;
+    const static double EPS = 4;
+    if (! jump) swingArm();
     double delta = bodyRotateE - bodyRotateX;
     if (abs(delta) > EPS)
     {
@@ -691,6 +705,37 @@ void actRotateLoop(int id)
     rotateIndRightArm(rightArm, bodyRotateX);
     glutPostRedisplay();
     glutTimerFunc(ACTROTATESPEED, actRotateLoop, id);
+}
+void actJumpLoop(int id)
+{
+    double v2m2ax = actJumpVE*actJumpVE-2*actJumpA*actDepth;
+    if (actJumpV > 0)
+    {
+        jump = true;
+        if (v2m2ax > 0)
+        {
+            actJumpV = sqrt(v2m2ax);
+            bodyTranslateY(actJumpV);
+            translateY(actor, actJumpV/F);
+            translateY(body, actJumpV);
+            actDepth += actJumpV;
+        }
+        else actJumpV = 0, actDepth -= 0.01;
+    }
+    else if (actDepth > 0) 
+    {
+        if (v2m2ax > 0)
+        {
+            actJumpV = -sqrt(v2m2ax);
+            bodyTranslateY(actJumpV);
+            translateY(actor, actJumpV/F);
+            translateY(body, actJumpV);
+            actDepth += actJumpV;
+        }
+    }
+    else jump = false;
+    glutPostRedisplay();
+    glutTimerFunc(ACTORJUMPSPEED, actJumpLoop, id);
 }
 void makeMatch(double topx, double topy, double bottomx, double bottomy,
     double matchWidth, double topd, double bottomd, vector <Point> &res)
@@ -706,7 +751,7 @@ void makeMatch(double topx, double topy, double bottomx, double bottomy,
 }
 void makeBody()
 {
-    makeMatch(0, 0, 0, 0, bodyWidth, -F*BALLSIZE, -bodyHeight, body);
+    makeMatch(0, 0, 0, 0, bodyWidth, -F*BALLSIZE, -bodyHeight-armLongerThanLeg, body);
     makeMatch(0, 0, -legStepWidth, 0, bodyWidth, -bodyHeight, GY, leftLeg);
     makeMatch(0, 0, legStepWidth, 0, bodyWidth, -bodyHeight, GY, rightLeg);
     makeMatch(0, 0, -armStepWidth, 0, bodyWidth, -F*BALLSIZE, -bodyHeight-armLongerThanLeg, leftArm);
@@ -789,8 +834,8 @@ int main(int argc, char** argv)
     skyRightTexId = loadTexture("skybox/right.bmp");
 
     // debug
-    // bodyRotateE = bodyRotateX = actRotateX = 90;
-    
+    // bodyTranslateY(0.01);
+
     // rendering
     glEnable(GL_TEXTURE_2D);
     glutDisplayFunc(display); 
@@ -804,10 +849,12 @@ int main(int argc, char** argv)
     glutKeyboardUpFunc(keyboardUpListener);
     glutSpecialFunc(specialListener);
     glutSpecialUpFunc(specialUpListener);
+    glutEntryFunc(windowFoucusListener);
 
     // loop
     glutTimerFunc(SCENESPEED, sceneMoveLoop, SCENEID);
     glutTimerFunc(ACTROTATESPEED, actRotateLoop, ACTROTATEID);
+    glutTimerFunc(ACTORJUMPSPEED, actJumpLoop, ACTORJUMPID);
     glutMainLoop();
     return 0;
 }
