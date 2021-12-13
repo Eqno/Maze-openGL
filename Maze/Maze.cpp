@@ -13,7 +13,7 @@
 using namespace std;
 /*
 wasd 移动，按住 shift 跑步，qe 旋转，m 打开地图，z 编辑地图，x 增加墙，
-f 放置墙，c 删除墙，v 切换视角， t 显示朝向, ↑ 推进镜头，↓ 拉远镜头。
+i 清空墙壁，p 生成地图，f 放置墙，c 删除墙，v 切换视角， r 显示朝向, ↑ 推进镜头，↓ 拉远镜头。
 n 检测 shift 用。
 */
 
@@ -30,13 +30,14 @@ double bodyWidth = 3, bodyHeight = 100, armStepWidth = 20,
     legStepWidth = 15, armLongerThanLeg = 10;
 
 double wallTexFactor = 5, groundTexFactor = 50,
-    obvRotateX = 0, obvRotateY = 0,
+    obvRotateX = 0, obvRotateY = 0, genWallFac = 100,
     actStepWalk = 2, actStepRun = 5, actStep = actStepWalk,  // walk speed
     turnLeftStep = 1, turnRightStep = 1, bodyRotateStep = 2,
     obvMoveFactorX = 1.2, obvMoveFactorY = 0.5, obvMoveRadius = 3,
     obvLookRadius = 3, zoomStep = 0.05, obvRadiusMax = 8, obvRadiusMin = 1.3,
     mapViewFac = 0.7, mapViewHeight = 5000, wallHeight = 500,
-    skyBottom = -500, skyDistance = 500, siteDistance = 500;
+    skyBottom = -500, skyDistance = 500, siteDistance = 500,
+    actMoveX = 0, actMoveZ = 0;
     
 bool openMap = false, firstPerson = false, windowFoucus = false, jump = false, folowJump = true,
     mouseLeftDown = false, mouseRightDown = false, mouseControlMove = false,
@@ -215,14 +216,17 @@ void addActor()
 	glColor3dv(BLACK);
     if ((!firstPerson) || openMap)
     {
-        for (int i=3; i<actor.size(); i+=4)
-        {
+        // for (int i=3; i<actor.size(); i+=4)
+        // {
             // glBindTexture(GL_TEXTURE_2D, ball);
-            glBegin(GL_LINE_LOOP);
-            for (int j=0; j<3; j++)
-                glVertex3d(actor[i-j].x, actor[i-j].y, actor[i-j].z);
-            glEnd();
-        }
+            // glBegin(GL_LINE_LOOP);
+            // for (int j=0; j<3; j++)
+                // glVertex3d(actor[i-j].x, actor[i-j].y, actor[i-j].z);
+            // glEnd();
+        // }
+        glBegin(GL_QUADS);
+        for (auto i: actor) glVertex3d(i.x, i.y, i.z);
+        glEnd();
     }
     addMatch(body), addMatch(leftLeg), addMatch(rightLeg), addMatch(leftArm), addMatch(rightArm);
     if (openMap || showDre)
@@ -297,6 +301,7 @@ void move(double delX, double delZ)
             wallEx[i][j].x += delX;
             wallEx[i][j].z += delZ;
         }
+    actMoveX += delX, actMoveZ += delZ;
 }
 void mouseClick(int button, int state, int x, int y)
 {
@@ -330,6 +335,57 @@ void mouseClickMove(int x, int y)
         obverseChange(obvRotateY, y, lastRotateY, obvMoveFactorY);
     }
 }
+struct Edge { int u, v, z; };
+vector <Edge> edge, ans;
+const int MAXN = 1e5+10;
+int f[MAXN];
+int getf(int x) { return x==f[x] ? x : (f[x]=getf(f[x])); }
+bool merge(int x, int y)
+{
+    x=getf(x), y=getf(y);
+    if (x != y)
+    {
+        f[x] = y;
+        return true;
+    }
+    else return false;
+}
+bool genWallCmp(const Edge &i, const Edge &j) { return i.z < j.z; }
+void genWall()
+{
+    openMap = editMap = true;
+    zoomIn = zoomOut = false;
+    reshape(W, H);
+    glutReshapeWindow(W, H);
+
+    srand(time(NULL));
+    int numX = GX/genWallFac, numZ = GZ/genWallFac;
+    for (int i=0; i<numX; i++)
+        for (int j=0; j<numZ; j++)
+            {
+                f[i*numZ+j] = i*numZ+j;
+                if (i) edge.push_back({i*numZ+j, (i-1)*numZ+j, abs(rand())%65535});
+                if (j) edge.push_back({i*numZ+j, i*numZ+(j-1), abs(rand())%65535});
+            }
+    sort(edge.begin(), edge.end(), genWallCmp);
+    for (auto i: edge)
+        if (merge(i.u, i.v)) ans.push_back(i);
+    for (auto p: ans)
+    {
+        int i1 = p.u/numZ, j1 = p.u%numZ;
+        int i2 = p.v/numZ, j2 = p.v%numZ;
+        Point m = {actMoveX-GX+i1*genWallFac*2+genWallFac, GY+wallHeight, actMoveZ-GZ+j1*genWallFac*2+genWallFac},
+            n = {actMoveX-GX+i2*genWallFac*2+genWallFac, GY+wallHeight, actMoveZ-GZ+j2*genWallFac*2+genWallFac};
+        wall.push_back({
+            {actMoveX-GX+i1*genWallFac*2+genWallFac, GY, actMoveZ-GZ+j1*genWallFac*2+genWallFac}, m, n,
+            {actMoveX-GX+i2*genWallFac*2+genWallFac, GY, actMoveZ-GZ+j2*genWallFac*2+genWallFac},
+        });
+        vector <Point> v;
+        getLine(m, n, v);
+        wallEx.push_back(v);
+    }
+    
+}
 void keyboardListener(unsigned char cmd, int x, int y)
 {
     switch (cmd)
@@ -341,6 +397,11 @@ void keyboardListener(unsigned char cmd, int x, int y)
         case 'q': turnLeft = true; break;
         case 'e': turnRight = true; break;
         case 'r': showDre = !showDre; break;
+        case 'p': if (wall.size() <= 4) genWall(); break;
+        case 'i':
+            while (wall.size() > 4) wall.pop_back();
+            while (wallEx.size() > 4) wallEx.pop_back();
+            break;
         case ' ': if (! jump) actJumpV = actJumpVE; break;
         case 'n':
             actStep = actStepWalk;
